@@ -38,7 +38,7 @@ git clone https://github.com/minh1billion/pixelart-classifier
 cd pixelart-classifier
 
 # 2. Install
-pip install -e ".[train]"
+pip install -r requirements.txt
 
 # 3. Download model weights
 python -c "
@@ -54,14 +54,78 @@ hf_hub_download(
 uvicorn server:app --reload
 # open http://localhost:8000
 ```
+
+---
+
+## Dataset
+
+The training dataset is hosted on Google Drive (~114 MB).
+
+📦 **[Download data.zip](https://drive.google.com/drive/folders/1i-w3_in-O93gQvBj1ktRxrBdIdFhGw11)**
+
+After downloading, extract into the project root so the structure looks like:
+
+```
+pixelart-classifier/
+├── data/
+│   ├── pixelart/
+│   └── non-pixelart/
+```
+
+**Dataset stats:**
+
+| Class | Images |
+|-------|--------|
+| pixelart | 2 631 |
+| non-pixelart | 938 |
+| **Total** | **3 569** |
+
+---
+
+## Train From Scratch
+
+> Make sure the dataset is downloaded and extracted first (see above).
+
+**Step 1 — Run EDA** *(optional but recommended)*
+
+Analyses class distribution, image sizes, colour stats, and duplicate detection. Outputs charts and a JSON report to `eda_output/`.
+
+```bash
+python eda.py
+```
+
+**Step 2 — Train**
+
+Splits the data, trains EfficientNet-B0, and saves the best checkpoint to `train_output/best_model.pth`.
+
+```bash
+python train.py
+```
+
+Training config (editable at the top of `train.py`):
+
+| Parameter | Default | Notes |
+|-----------|---------|-------|
+| `img_size` | 224 | Input resolution |
+| `epochs` | 40 | Early stopping at patience=8 |
+| `batch_size` | 32 | Safe for 4 GB VRAM |
+| `lr` | 1e-4 | Head LR; backbone uses 1e-5 after warmup |
+
+Tested on **GTX 1650 (4 GB VRAM)**, ~24 epochs, ~30 min total.
+
 ---
 
 ## Web Interface
 
 Open **http://localhost:8000** — features include:
-- Drag & drop or click to load an image
-- Instant classification with confidence bars
-- Batch test up to 100 images at once
+
+- Drag & drop, click to browse, or `Ctrl+V` to paste from clipboard
+- `Enter` to classify, `Esc` to clear
+- Confidence bars per class
+- Click image to zoom fullscreen
+- Classification history (last 20, clickable)
+- Copy result as JSON or download
+- Batch test up to 100 images with per-file breakdown and JSON export
 - Auto-generated API docs at `/docs`
 
 ---
@@ -94,32 +158,27 @@ curl -X POST http://localhost:8000/api/predict -F "file=@sprite.png"
 
 ```
 pixelart-classifier/
+├── data/                      # Dataset (download separately)
+├── eda_output/                # EDA charts and report (generated)
+├── train_output/              # Weights and training artifacts (generated)
+│   └── best_model.pth         # Also available on HuggingFace
+├── static/
+│   └── index.html             # Web UI (no build step needed)
 ├── server.py                  # FastAPI app
-├── static/index.html          # Web UI (no build step needed)
 ├── train.py                   # Training script
 ├── eda.py                     # EDA script
-├── pyproject.toml             # Packaging config
-└── train_output/              # Weights live on HuggingFace
+└── requirements.txt
 ```
-
----
-
-## Train From Scratch
-
-```bash
-# Prepare dataset folders, then:
-python eda.py    # optional analysis
-python train.py  # saves best_model.pth to train_output/
-```
-
-Tested on GTX 1650 (4 GB VRAM), batch size 32, ~24 epochs.
 
 ---
 
 ## Model Architecture
 
 EfficientNet-B0 backbone with a custom head:
-`Dropout(0.3) → Linear(1280→128) → ReLU → Dropout(0.2) → Linear(128→2)`
+
+```
+Dropout(0.3) → Linear(1280→128) → ReLU → Dropout(0.2) → Linear(128→2)
+```
 
 Training uses a 5-epoch warmup (head only), then full fine-tuning at 10× lower backbone LR with CosineAnnealingLR decay.
 
