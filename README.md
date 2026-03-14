@@ -30,7 +30,7 @@ True  non-PA    92      1
 
 ## Quickstart
 
-### Option A — Run from source
+### Run from source
 
 ```bash
 # 1. Clone
@@ -54,15 +54,6 @@ hf_hub_download(
 uvicorn server:app --reload
 # open http://localhost:8000
 ```
-
-### Option B — Install as package
-
-```bash
-pip install pixelart-classifier
-pixelart-classifier
-# open http://localhost:8000
-```
-
 ---
 
 ## Web Interface
