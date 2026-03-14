@@ -22,4 +22,4 @@ Thumbs.db
 .vscode/settings.json
 *.ipynb
 .ipynb_checkpoints/
-*.log
+*.logdata.zip
