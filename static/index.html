@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pixel Art Classifier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0d0d14;
+  --surface:   #13131f;
+  --card:      #1a1a2e;
+  --border:    #2a2a4a;
+  --accent:    #6e40f2;
+  --accent2:   #00e5ff;
+  --green:     #39ff14;
+  --orange:    #ff6b35;
+  --text:      #e8e8f0;
+  --muted:     #6b6b8e;
+  --px-size:   3px;
+  --font-game: 'Press Start 2P', monospace;
+  --font-mono: 'DM Mono', monospace;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 14px; line-height: 1.6; overflow-x: hidden; }
+
+body::before {
+  content: ''; pointer-events: none; position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+  z-index: 9999;
+}
+
+.px-box { border: var(--px-size) solid var(--border); box-shadow: inset 1px 1px 0 rgba(255,255,255,0.06), 4px 4px 0 rgba(0,0,0,0.5); }
+
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ── HEADER ── */
+header {
+  padding: 20px 32px; display: flex; align-items: center; gap: 20px;
+  border-bottom: var(--px-size) solid var(--border); background: var(--surface);
+  position: relative; overflow: hidden;
+}
+header::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2), var(--green));
+  animation: shimmer 3s linear infinite; background-size: 200% 100%;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.logo { font-family: var(--font-game); font-size: 11px; color: var(--accent2); text-shadow: 2px 2px 0 var(--accent), 0 0 20px rgba(0,229,255,0.4); line-height: 1.8; letter-spacing: 1px; }
+.logo span { color: var(--green); }
+
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+.status-pill { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); background: var(--card); padding: 6px 14px; border: 2px solid var(--border); }
+.status-pill .dot { width: 8px; height: 8px; background: var(--muted); display: inline-block; animation: blink 1s step-end infinite; }
+.status-pill.ready .dot { background: var(--green); animation: none; }
+.status-pill.error .dot { background: var(--orange); animation: none; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* keyboard hint in header */
+.kb-hint { font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.kb-hint kbd { background: var(--card); border: 1px solid var(--border); padding: 2px 6px; font-family: var(--font-mono); font-size: 10px; color: var(--accent2); }
+
+/* ── MAIN ── */
+main {
+  flex: 1; display: grid; grid-template-columns: 1fr 420px;
+  max-width: 1200px; margin: 0 auto; width: 100%; padding: 32px; gap: 24px;
+}
+
+/* ── UPLOAD PANEL ── */
+.upload-panel { display: flex; flex-direction: column; gap: 16px; }
+
+.drop-zone {
+  flex: 1; min-height: 380px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+  background: var(--card); border: var(--px-size) dashed var(--border);
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  position: relative; overflow: hidden; user-select: none;
+}
+.drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: #1e1e35; }
+.drop-zone.drag-over::before { content: ''; position: absolute; inset: 0; background: rgba(110,64,242,0.08); pointer-events: none; }
+.drop-zone::before, .drop-zone::after { content: ''; position: absolute; width: 20px; height: 20px; border-color: var(--accent); border-style: solid; }
+.drop-zone::before { top: 8px; left: 8px; border-width: 3px 0 0 3px; }
+.drop-zone::after  { bottom: 8px; right: 8px; border-width: 0 3px 3px 0; }
+
+.drop-icon { font-size: 48px; filter: grayscale(0.3); transition: transform 0.2s; }
+.drop-zone:hover .drop-icon { transform: scale(1.1) translateY(-4px); }
+.drop-text { font-family: var(--font-game); font-size: 8px; color: var(--muted); text-align: center; line-height: 2; }
+.drop-text strong { color: var(--accent2); display: block; margin-bottom: 8px; }
+.drop-hint { font-size: 11px; color: var(--muted); }
+
+/* paste hint */
+.paste-hint { font-size: 10px; color: var(--muted); opacity: 0.6; margin-top: -6px; }
+
+#preview-img { display: none; max-width: 100%; max-height: 100%; image-rendering: pixelated; object-fit: contain; cursor: zoom-in; transition: transform 0.2s; }
+.drop-zone.has-image .drop-icon,
+.drop-zone.has-image .drop-text,
+.drop-zone.has-image .drop-hint,
+.drop-zone.has-image .paste-hint { display: none; }
+.drop-zone.has-image #preview-img { display: block; }
+
+/* zoom overlay */
+.zoom-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+  z-index: 1000; align-items: center; justify-content: center; cursor: zoom-out;
+}
+.zoom-overlay.active { display: flex; }
+.zoom-overlay img { max-width: 90vw; max-height: 90vh; image-rendering: pixelated; object-fit: contain; box-shadow: 0 0 0 3px var(--accent); }
+
+/* file info */
+.file-info { display: none; padding: 10px 16px; background: var(--card); border: 2px solid var(--border); font-size: 12px; color: var(--muted); gap: 12px; align-items: center; }
+.file-info.visible { display: flex; }
+.file-info .fname { color: var(--text); font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* action row */
+.action-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+
+.btn-classify {
+  font-family: var(--font-game); font-size: 9px; letter-spacing: 1px;
+  padding: 16px 24px; background: var(--accent); color: #fff; border: none;
+  cursor: pointer; transition: background 0.1s, transform 0.1s;
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.6);
+}
+.btn-classify:hover:not(:disabled) { background: #7c50f5; transform: translate(-1px,-1px); box-shadow: 5px 5px 0 rgba(0,0,0,0.6); }
+.btn-classify:active:not(:disabled) { transform: translate(2px,2px); box-shadow: 2px 2px 0 rgba(0,0,0,0.6); }
+.btn-classify:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; box-shadow: 2px 2px 0 rgba(0,0,0,0.3); }
+
+.btn-clear {
+  font-family: var(--font-game); font-size: 8px; padding: 16px 14px;
+  background: transparent; color: var(--muted); border: 2px solid var(--border);
+  cursor: pointer; transition: color 0.15s, border-color 0.15s;
+}
+.btn-clear:hover { color: var(--orange); border-color: var(--orange); }
+
+/* ── RIGHT PANEL ── */
+.right-panel { display: flex; flex-direction: column; gap: 16px; }
+
+.result-card { background: var(--card); border: var(--px-size) solid var(--border); box-shadow: 4px 4px 0 rgba(0,0,0,0.5); padding: 24px; }
+.card-label { font-family: var(--font-game); font-size: 7px; color: var(--muted); letter-spacing: 2px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+
+.result-main { text-align: center; padding: 24px 0; }
+.result-emoji { font-size: 52px; display: block; margin-bottom: 12px; }
+.result-class { font-family: var(--font-game); font-size: 13px; color: var(--text); display: block; margin-bottom: 8px; }
+.result-class.pixelart    { color: var(--green);  text-shadow: 0 0 12px rgba(57,255,20,0.4); }
+.result-class.non-pixelart { color: var(--orange); text-shadow: 0 0 12px rgba(255,107,53,0.4); }
+.result-conf { font-size: 12px; color: var(--muted); }
+.result-conf strong { color: var(--text); font-size: 20px; }
+
+.result-actions { display: flex; gap: 8px; margin-top: 16px; }
+.btn-sm {
+  font-family: var(--font-game); font-size: 7px; padding: 8px 12px;
+  background: transparent; border: 2px solid var(--border); color: var(--muted);
+  cursor: pointer; transition: color 0.15s, border-color 0.15s; flex: 1;
+}
+.btn-sm:hover { color: var(--accent2); border-color: var(--accent2); }
+.btn-sm.copied { color: var(--green); border-color: var(--green); }
+
+.result-placeholder { text-align: center; color: var(--muted); font-size: 12px; padding: 24px 0; }
+.result-placeholder .ph-icon { font-size: 36px; display: block; margin-bottom: 12px; filter: grayscale(1); opacity: 0.4; }
+
+.bars { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.bar-row { display: flex; flex-direction: column; gap: 4px; }
+.bar-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.bar-meta .bar-name { color: var(--text); }
+.bar-track { height: 12px; background: var(--surface); border: 2px solid var(--border); position: relative; overflow: hidden; }
+.bar-fill { height: 100%; width: 0%; transition: width 0.6s cubic-bezier(0.16,1,0.3,1); position: relative; }
+.bar-fill::after { content: ''; position: absolute; top: 0; right: 0; width: 4px; height: 100%; background: rgba(255,255,255,0.3); }
+.bar-fill.pixelart    { background: var(--green); }
+.bar-fill.non-pixelart { background: var(--orange); }
+
+/* ── HISTORY ── */
+.history-card { background: var(--card); border: var(--px-size) solid var(--border); box-shadow: 4px 4px 0 rgba(0,0,0,0.5); padding: 20px 24px; }
+.history-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; max-height: 220px; overflow-y: auto; }
+.history-list::-webkit-scrollbar { width: 4px; }
+.history-list::-webkit-scrollbar-track { background: var(--surface); }
+.history-list::-webkit-scrollbar-thumb { background: var(--border); }
+.history-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  background: var(--surface); border-left: 3px solid var(--border);
+  cursor: pointer; transition: background 0.15s; font-size: 11px;
+}
+.history-item:hover { background: #1e1e35; }
+.history-item.pa  { border-color: var(--green); }
+.history-item.npa { border-color: var(--orange); }
+.history-thumb { width: 32px; height: 32px; object-fit: cover; image-rendering: pixelated; flex-shrink: 0; border: 1px solid var(--border); }
+.history-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.history-conf { color: var(--muted); flex-shrink: 0; }
+.history-label { font-size: 9px; flex-shrink: 0; }
+.history-label.pa  { color: var(--green); }
+.history-label.npa { color: var(--orange); }
+.history-empty { font-size: 11px; color: var(--muted); text-align: center; padding: 16px 0; opacity: 0.5; }
+
+.card-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.btn-clear-hist { font-family: var(--font-game); font-size: 6px; background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 2px 4px; }
+.btn-clear-hist:hover { color: var(--orange); }
+
+/* ── BATCH PANEL ── */
+.batch-card { background: var(--card); border: var(--px-size) solid var(--border); box-shadow: 4px 4px 0 rgba(0,0,0,0.5); padding: 20px 24px; }
+
+.btn-batch {
+  font-family: var(--font-game); font-size: 7px; padding: 12px 16px;
+  background: transparent; color: var(--accent2); border: 2px solid var(--accent2);
+  cursor: pointer; width: 100%; transition: background 0.15s, transform 0.1s;
+  box-shadow: 3px 3px 0 rgba(0,229,255,0.2); margin-top: 12px; letter-spacing: 1px;
+}
+.btn-batch:hover:not(:disabled) { background: rgba(0,229,255,0.08); transform: translate(-1px,-1px); }
+.btn-batch:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.batch-results { margin-top: 14px; display: none; flex-direction: column; gap: 6px; }
+.batch-results.visible { display: flex; }
+
+/* batch summary */
+.batch-summary { display: flex; flex-direction: column; gap: 6px; }
+.batch-stat { display: flex; justify-content: space-between; padding: 8px 12px; background: var(--surface); border-left: 3px solid var(--border); font-size: 12px; }
+.batch-stat.pa  { border-color: var(--green); }
+.batch-stat.npa { border-color: var(--orange); }
+.batch-stat.err { border-color: var(--muted); }
+.batch-stat .bs-val { font-weight: 600; }
+
+/* batch per-file toggle */
+.batch-toggle { font-family: var(--font-game); font-size: 7px; background: transparent; border: 1px solid var(--border); color: var(--muted); cursor: pointer; padding: 6px 10px; width: 100%; margin-top: 8px; transition: color 0.15s, border-color 0.15s; }
+.batch-toggle:hover { color: var(--accent2); border-color: var(--accent2); }
+
+.batch-detail { display: none; margin-top: 8px; max-height: 200px; overflow-y: auto; }
+.batch-detail.open { display: block; }
+.batch-detail::-webkit-scrollbar { width: 4px; }
+.batch-detail::-webkit-scrollbar-thumb { background: var(--border); }
+.batch-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; font-size: 11px; border-bottom: 1px solid var(--border); }
+.batch-row:last-child { border-bottom: none; }
+.batch-row-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.batch-row-label { font-size: 9px; }
+.batch-row-label.pa  { color: var(--green); }
+.batch-row-label.npa { color: var(--orange); }
+.batch-row-label.err { color: var(--muted); }
+.batch-row-conf { color: var(--muted); font-size: 11px; }
+
+/* batch download */
+.btn-dl-batch { font-family: var(--font-game); font-size: 7px; background: transparent; border: 1px solid var(--border); color: var(--muted); cursor: pointer; padding: 6px 10px; width: 100%; margin-top: 6px; }
+.btn-dl-batch:hover { color: var(--green); border-color: var(--green); }
+
+/* ── MISC ── */
+.batch-file-input, #file-input { display: none; }
+
+footer { border-top: var(--px-size) solid var(--border); padding: 12px 32px; background: var(--surface); display: flex; align-items: center; gap: 16px; font-size: 11px; color: var(--muted); }
+footer a { color: var(--accent2); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+.footer-dot { opacity: 0.3; }
+
+.spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--muted); border-top-color: var(--accent2); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast { position: fixed; bottom: 60px; right: 24px; background: var(--card); border: 2px solid var(--border); padding: 12px 20px; font-size: 12px; box-shadow: 4px 4px 0 rgba(0,0,0,0.5); transform: translateX(120%); transition: transform 0.3s; z-index: 100; max-width: 280px; }
+.toast.show { transform: translateX(0); }
+.toast.err  { border-color: var(--orange); color: var(--orange); }
+.toast.ok   { border-color: var(--green);  color: var(--green); }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.fade-in { animation: fadeIn 0.3s ease forwards; }
+
+@media (max-width: 800px) {
+  main { grid-template-columns: 1fr; padding: 16px; }
+  header { padding: 16px; flex-wrap: wrap; }
+  .logo { font-size: 8px; }
+  .kb-hint { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="logo">PIXEL<span>ART</span><br>CLASSIFIER</div>
+    <div class="kb-hint">
+      <kbd>Enter</kbd> classify
+      <kbd>Ctrl+V</kbd> paste
+      <kbd>Esc</kbd> clear
+    </div>
+    <div class="header-right">
+      <div id="status-pill" class="status-pill">
+        <span class="dot"></span>
+        <span id="status-text">Connecting…</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Left -->
+    <div class="upload-panel">
+      <div class="drop-zone px-box" id="drop-zone">
+        <span class="drop-icon">🖼️</span>
+        <div class="drop-text">
+          <strong>DROP IMAGE HERE</strong>
+          or click to browse
+        </div>
+        <span class="drop-hint">PNG · JPG · BMP · WEBP — max 20 MB</span>
+        <span class="paste-hint">or Ctrl+V to paste from clipboard</span>
+        <img id="preview-img" alt="preview" title="Click to zoom" />
+      </div>
+
+      <div class="file-info" id="file-info">
+        <span class="fname" id="file-name">—</span>
+        <span id="file-dims">—</span>
+      </div>
+
+      <div class="action-row">
+        <button class="btn-classify" id="btn-classify" disabled>► CLASSIFY IMAGE</button>
+        <button class="btn-clear px-box" id="btn-clear" title="Clear (Esc)">✕</button>
+      </div>
+
+      <input type="file" id="file-input" accept="image/*" />
+    </div>
+
+    <!-- Right -->
+    <div class="right-panel">
+
+      <!-- Result -->
+      <div class="result-card px-box">
+        <div class="card-label">
+          <span>// RESULT</span>
+        </div>
+        <div id="result-content">
+          <div class="result-placeholder">
+            <span class="ph-icon">🎮</span>
+            Load an image and hit<br><strong>CLASSIFY IMAGE</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="history-card px-box">
+        <div class="card-label">
+          <div class="card-label-row" style="width:100%">
+            <span>// HISTORY</span>
+            <button class="btn-clear-hist" id="btn-clear-hist">CLEAR</button>
+          </div>
+        </div>
+        <div class="history-list" id="history-list">
+          <div class="history-empty">No classifications yet</div>
+        </div>
+      </div>
+
+      <!-- Batch -->
+      <div class="batch-card px-box">
+        <div class="card-label">// BATCH TEST</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.8">
+          Select multiple images to classify all at once.
+        </div>
+        <button class="btn-batch" id="btn-batch" disabled>▶ SELECT FILES FOR BATCH</button>
+        <input type="file" id="batch-input" class="batch-file-input" accept="image/*" multiple />
+        <div class="batch-results" id="batch-results"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer>
+    <span>Pixel Art Classifier</span>
+    <span class="footer-dot">·</span>
+    <span>EfficientNet-B0</span>
+    <span class="footer-dot">·</span>
+    <a href="/docs" target="_blank">API Docs</a>
+    <span class="footer-dot">·</span>
+    <span id="footer-device" style="margin-left:auto">—</span>
+  </footer>
+</div>
+
+<!-- Zoom overlay -->
+<div class="zoom-overlay" id="zoom-overlay">
+  <img id="zoom-img" alt="zoomed preview" />
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+let currentFile = null;
+let lastResult  = null;
+let batchData   = null;
+const history   = []; // { file, result, thumb, ts }
+
+// ── ELEMENTS ───────────────────────────────────────────────────────────────
+const dropZone    = document.getElementById('drop-zone');
+const fileInput   = document.getElementById('file-input');
+const previewImg  = document.getElementById('preview-img');
+const fileInfo    = document.getElementById('file-info');
+const fileName    = document.getElementById('file-name');
+const fileDims    = document.getElementById('file-dims');
+const btnClassify = document.getElementById('btn-classify');
+const btnClear    = document.getElementById('btn-clear');
+const resultBox   = document.getElementById('result-content');
+const batchInput  = document.getElementById('batch-input');
+const btnBatch    = document.getElementById('btn-batch');
+const batchRes    = document.getElementById('batch-results');
+const statusPill  = document.getElementById('status-pill');
+const statusText  = document.getElementById('status-text');
+const toastEl     = document.getElementById('toast');
+const footerDev   = document.getElementById('footer-device');
+const histList    = document.getElementById('history-list');
+const btnClearHist= document.getElementById('btn-clear-hist');
+const zoomOverlay = document.getElementById('zoom-overlay');
+const zoomImg     = document.getElementById('zoom-img');
+
+// ── TOAST ──────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = 'ok') {
+  toastEl.textContent = msg;
+  toastEl.className   = `toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3500);
+}
+
+// ── STATUS ─────────────────────────────────────────────────────────────────
+async function checkStatus() {
+  try {
+    const res  = await fetch('/api/status');
+    const data = await res.json();
+    if (data.loaded) {
+      statusPill.className = 'status-pill ready';
+      const acc = data.val_acc ? ` · val ${(data.val_acc*100).toFixed(1)}%` : '';
+      statusText.textContent = `Model ready${acc}`;
+      btnBatch.disabled = false;
+      footerDev.textContent = data.device.toUpperCase();
+    } else {
+      statusPill.className = 'status-pill error';
+      statusText.textContent = 'Model error';
+      toast(data.error || 'Model not loaded', 'err');
+    }
+  } catch {
+    statusPill.className = 'status-pill error';
+    statusText.textContent = 'Server offline';
+  }
+}
+checkStatus();
+
+// ── LOAD FILE ──────────────────────────────────────────────────────────────
+function loadFile(file) {
+  if (!file.type.startsWith('image/')) { toast('Please select an image file.', 'err'); return; }
+  currentFile = file;
+  const url = URL.createObjectURL(file);
+  previewImg.src = url;
+  previewImg.onload = () => {
+    fileDims.textContent = `${previewImg.naturalWidth} × ${previewImg.naturalHeight} px`;
+  };
+  dropZone.classList.add('has-image');
+  fileInfo.classList.add('visible');
+  fileName.textContent = file.name;
+  btnClassify.disabled = false;
+  lastResult = null;
+  resultBox.innerHTML = `<div class="result-placeholder"><span class="ph-icon">🔍</span>Ready — hit <strong>CLASSIFY IMAGE</strong></div>`;
+}
+
+// ── CLEAR ──────────────────────────────────────────────────────────────────
+function clearAll() {
+  currentFile = null; lastResult = null;
+  previewImg.src = '';
+  dropZone.classList.remove('has-image');
+  fileInfo.classList.remove('visible');
+  fileName.textContent = '—'; fileDims.textContent = '—';
+  btnClassify.disabled = true;
+  fileInput.value = '';
+  resultBox.innerHTML = `<div class="result-placeholder"><span class="ph-icon">🎮</span>Load an image and hit<br><strong>CLASSIFY IMAGE</strong></div>`;
+}
+
+btnClear.addEventListener('click', clearAll);
+
+// ── DROP ZONE ──────────────────────────────────────────────────────────────
+dropZone.addEventListener('click', (e) => {
+  if (e.target === previewImg) return;
+  fileInput.click();
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0]; if (f) loadFile(f);
+});
+
+// ── PASTE FROM CLIPBOARD ───────────────────────────────────────────────────
+document.addEventListener('paste', async (e) => {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) { loadFile(file); toast('Image pasted from clipboard', 'ok'); break; }
+    }
+  }
+});
+
+// ── ZOOM PREVIEW ───────────────────────────────────────────────────────────
+previewImg.addEventListener('click', (e) => {
+  e.stopPropagation();
+  zoomImg.src = previewImg.src;
+  zoomOverlay.classList.add('active');
+});
+zoomOverlay.addEventListener('click', () => zoomOverlay.classList.remove('active'));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (zoomOverlay.classList.contains('active')) { zoomOverlay.classList.remove('active'); return; }
+    clearAll();
+  }
+  if (e.key === 'Enter' && !btnClassify.disabled) btnClassify.click();
+});
+
+// ── CLASSIFY ───────────────────────────────────────────────────────────────
+btnClassify.addEventListener('click', async () => {
+  if (!currentFile) return;
+  btnClassify.disabled  = true;
+  btnClassify.innerHTML = '<span class="spinner"></span> CLASSIFYING…';
+  try {
+    const form = new FormData();
+    form.append('file', currentFile);
+    const res = await fetch('/api/predict', { method: 'POST', body: form });
+    if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Server error'); }
+    const data = await res.json();
+    lastResult = data;
+    renderResult(data);
+    addHistory(currentFile, data, previewImg.src);
+  } catch (e) {
+    toast(e.message, 'err');
+    resultBox.innerHTML = `<div class="result-placeholder" style="color:var(--orange)">❌ ${e.message}</div>`;
+  } finally {
+    btnClassify.disabled  = false;
+    btnClassify.innerHTML = '► CLASSIFY IMAGE';
+  }
+});
+
+function renderResult(data) {
+  const isPA = data.label === 'pixelart';
+  const emoji = isPA ? '🎮' : '📷';
+  const cls   = data.label;
+  const conf  = (data.confidence * 100).toFixed(1);
+
+  const bars = Object.entries(data.probs).sort((a,b) => b[1]-a[1]).map(([label, prob]) => `
+    <div class="bar-row">
+      <div class="bar-meta"><span class="bar-name">${label}</span><span>${(prob*100).toFixed(1)}%</span></div>
+      <div class="bar-track"><div class="bar-fill ${label}" style="width:${prob*100}%"></div></div>
+    </div>`).join('');
+
+  resultBox.innerHTML = `
+    <div class="result-main fade-in">
+      <span class="result-emoji">${emoji}</span>
+      <span class="result-class ${cls}">${cls}</span>
+      <span class="result-conf">confidence: <strong>${conf}%</strong></span>
+    </div>
+    <div class="bars">${bars}</div>
+    <div class="result-actions">
+      <button class="btn-sm" id="btn-copy-result">⎘ COPY JSON</button>
+      <button class="btn-sm" id="btn-dl-result">↓ DOWNLOAD</button>
+    </div>`;
+
+  document.getElementById('btn-copy-result').addEventListener('click', copyResult);
+  document.getElementById('btn-dl-result').addEventListener('click', downloadResult);
+}
+
+// ── COPY / DOWNLOAD RESULT ─────────────────────────────────────────────────
+function copyResult() {
+  if (!lastResult) return;
+  const out = { label: lastResult.label, confidence: lastResult.confidence, probs: lastResult.probs, filename: lastResult.filename };
+  navigator.clipboard.writeText(JSON.stringify(out, null, 2)).then(() => {
+    const btn = document.getElementById('btn-copy-result');
+    if (btn) { btn.textContent = '✓ COPIED'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = '⎘ COPY JSON'; btn.classList.remove('copied'); }, 2000); }
+  });
+}
+
+function downloadResult() {
+  if (!lastResult) return;
+  const out = { label: lastResult.label, confidence: lastResult.confidence, probs: lastResult.probs, filename: lastResult.filename, dimensions: lastResult.dimensions };
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `result_${(lastResult.filename || 'image').replace(/\.[^.]+$/, '')}.json`;
+  a.click();
+}
+
+// ── HISTORY ────────────────────────────────────────────────────────────────
+function addHistory(file, result, thumbSrc) {
+  history.unshift({ name: file.name, result, thumbSrc, ts: Date.now() });
+  if (history.length > 20) history.pop();
+  renderHistory();
+}
+
+function renderHistory() {
+  if (!history.length) { histList.innerHTML = '<div class="history-empty">No classifications yet</div>'; return; }
+  histList.innerHTML = history.map((item, i) => {
+    const isPA = item.result.label === 'pixelart';
+    const conf = (item.result.confidence * 100).toFixed(0);
+    return `
+      <div class="history-item ${isPA ? 'pa' : 'npa'}" data-idx="${i}">
+        <img class="history-thumb" src="${item.thumbSrc}" alt="" />
+        <span class="history-name">${item.name}</span>
+        <span class="history-label ${isPA ? 'pa' : 'npa'}">${isPA ? 'PA' : 'NPA'}</span>
+        <span class="history-conf">${conf}%</span>
+      </div>`;
+  }).join('');
+
+  histList.querySelectorAll('.history-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const item = history[+el.dataset.idx];
+      lastResult = item.result;
+      renderResult(item.result);
+      // reload preview
+      previewImg.src = item.thumbSrc;
+      dropZone.classList.add('has-image');
+      fileInfo.classList.add('visible');
+      fileName.textContent = item.name;
+      btnClassify.disabled = false;
+    });
+  });
+}
+
+btnClearHist.addEventListener('click', () => {
+  history.length = 0; renderHistory();
+});
+
+// ── BATCH ──────────────────────────────────────────────────────────────────
+btnBatch.addEventListener('click', () => batchInput.click());
+batchInput.addEventListener('change', async () => {
+  const files = [...batchInput.files];
+  if (!files.length) return;
+  if (files.length > 100) { toast('Max 100 files per batch', 'err'); return; }
+
+  btnBatch.disabled  = true;
+  btnBatch.innerHTML = `<span class="spinner"></span> TESTING ${files.length} FILES…`;
+  batchRes.innerHTML = ''; batchRes.classList.remove('visible');
+
+  try {
+    const form = new FormData();
+    files.forEach(f => form.append('files', f));
+    const res = await fetch('/api/predict-batch', { method: 'POST', body: form });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
+    batchData = await res.json();
+    renderBatch(batchData);
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    btnBatch.disabled  = false;
+    btnBatch.innerHTML = '▶ SELECT FILES FOR BATCH';
+    batchInput.value   = '';
+  }
+});
+
+function renderBatch(data) {
+  const s = data.summary;
+  const paPct  = s.total ? ((s.pixelart / s.total)*100).toFixed(0) : 0;
+  const npaPct = s.total ? ((s['non-pixelart'] / s.total)*100).toFixed(0) : 0;
+
+  const rows = data.results.map(r => {
+    if (!r.ok) return `<div class="batch-row"><span class="batch-row-name">${r.filename}</span><span class="batch-row-label err">ERR</span></div>`;
+    const isPA = r.label === 'pixelart';
+    return `<div class="batch-row">
+      <span class="batch-row-name">${r.filename}</span>
+      <span class="batch-row-label ${isPA ? 'pa' : 'npa'}">${isPA ? 'PA' : 'NPA'}</span>
+      <span class="batch-row-conf">${(r.confidence*100).toFixed(0)}%</span>
+    </div>`;
+  }).join('');
+
+  batchRes.innerHTML = `
+    <div class="batch-summary">
+      <div class="batch-stat pa"><span>🎮 Pixel art</span><span class="bs-val">${s.pixelart} <span style="opacity:.5">(${paPct}%)</span></span></div>
+      <div class="batch-stat npa"><span>📷 Non-pixel art</span><span class="bs-val">${s['non-pixelart']} <span style="opacity:.5">(${npaPct}%)</span></span></div>
+      ${s.errors ? `<div class="batch-stat err"><span>❌ Errors</span><span class="bs-val">${s.errors}</span></div>` : ''}
+      <div class="batch-stat" style="border-color:var(--muted);font-size:11px;opacity:.6"><span>Total</span><span class="bs-val">${s.total}</span></div>
+    </div>
+    <button class="batch-toggle" id="batch-toggle">▶ SHOW PER-FILE RESULTS</button>
+    <div class="batch-detail" id="batch-detail">${rows}</div>
+    <button class="btn-dl-batch" id="btn-dl-batch">↓ DOWNLOAD RESULTS JSON</button>`;
+
+  batchRes.classList.add('visible');
+  toast(`Batch done — ${s.total} images`, 'ok');
+
+  document.getElementById('batch-toggle').addEventListener('click', function() {
+    const detail = document.getElementById('batch-detail');
+    const open = detail.classList.toggle('open');
+    this.textContent = open ? '▼ HIDE PER-FILE RESULTS' : '▶ SHOW PER-FILE RESULTS';
+  });
+
+  document.getElementById('btn-dl-batch').addEventListener('click', () => {
+    if (!batchData) return;
+    const blob = new Blob([JSON.stringify(batchData, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'batch_results.json'; a.click();
+  });
+}
+</script>
+</body>
+</html>
